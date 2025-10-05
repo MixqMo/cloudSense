@@ -1,16 +1,16 @@
 import { useState } from "react";
-import { WeatherCard } from "../components/WeatherCard";
-import { WeatherForecast } from "../components/WeatherForecast";
-import { WeatherMap } from "../components/WeatherMap";
-import { CitySearch } from "../components/CitySearch";
-import { AirQualityIndicator } from "../components/AirQualityIndicator";
-import { ActivitiesToAvoid } from "../components/ActivitiesToAvoid";
-import { RecommendedActivities } from "../components/RecommendedActivities";
-import { HealthInformation } from "../components/HealthInformation";
-import { AirQualityMap } from "../components/AirQualityMap";
-import { ImageWithFallback } from "../components/figma/ImageWithFallback";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Badge } from "../components/ui/badge";
+import { WeatherCard } from "./components/WeatherCard";
+import { WeatherForecast } from "./components/WeatherForecast";
+import { WeatherMap } from "./components/WeatherMap";
+import { CitySearch } from "./components/CitySearch";
+import { AirQualityIndicator } from "./components/AirQualityIndicator";
+import { ActivitiesToAvoid } from "./components/ActivitiesToAvoid";
+import { RecommendedActivities } from "./components/RecommendedActivities";
+import { HealthInformation } from "./components/HealthInformation";
+import { AirQualityMap } from "./components/AirQualityMap";
+import { ImageWithFallback } from "./components/figma/ImageWithFallback";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
+import { Badge } from "./components/ui/badge";
 import { Wind, Sun, Cloud } from "lucide-react";
 
 type WeatherCondition = "sunny" | "cloudy" | "rainy";
@@ -134,6 +134,7 @@ export default function App() {
     setCurrentWeather(weatherData);
     setLoading(false);
   };
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-100 via-cyan-50 to-blue-100">
