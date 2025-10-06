@@ -20,22 +20,28 @@ from typing import List, Optional, Dict, Tuple
 import math
 
 # -------------------- CONFIG DEFAULTS --------------------
+# Constantes de configuración por defecto
 GIBS_GETCAP_URL = "https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/wmts.cgi?request=GetCapabilities"
 IMAGE_DOWNLOAD_BASE = "https://gibs.earthdata.nasa.gov/image-download"
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 REQUEST_TIMEOUT = 20
-DEFAULT_MAX_LAYERS = 200
+DEFAULT_MAX_LAYERS = 200  # Número máximo de capas a probar
 DEFAULT_BBOXES = [
     [-125, 24, -66, 49],   # EEUU continental
     [-125, 32, -114, 42],  # California aprox
     [-103, 25, -93, 36],   # Texas aprox
     [-82.7, 24.2, -79.8, 31.0],  # Florida
 ]
-DEFAULT_SIZES = [(800, 600), (1200, 900), (1600, 1200)]
+DEFAULT_SIZES = [(800, 600), (1200, 900), (1600, 1200)]  # Resoluciones de prueba
 # ---------------------------------------------------------
 
 # -------------------- UTIL / SESSION ---------------------
 def create_session(retries: int = 3, backoff: float = 0.8) -> requests.Session:
+    """
+    Crea una sesión HTTP con reintentos automáticos.
+    - retries: número máximo de reintentos
+    - backoff: tiempo de espera exponencial entre intentos
+    """
     s = requests.Session()
     retry = Retry(total=retries, backoff_factor=backoff,
                   status_forcelist=(500, 502, 503, 504),
@@ -45,14 +51,26 @@ def create_session(retries: int = 3, backoff: float = 0.8) -> requests.Session:
     s.mount("http://", adapter)
     return s
 
+# Sesión global configurada
 session = create_session()
 
 def setup_logging(verbose: bool):
+    """
+    Configura el nivel de logging:
+    - INFO por defecto
+    - DEBUG si se activa --verbose
+    """
     lvl = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=lvl)
 
 # -------------------- XML / TIME PARSING ----------------
 def parse_time_text(raw: Optional[str]) -> Optional[str]:
+    """
+    Interpreta el texto de dimensión temporal (TIME) en el XML de GetCapabilities.
+    Puede estar en formato:
+      - Lista separada por comas
+      - Intervalo con '/'
+    """
     if not raw:
         return None
     t = raw.strip()
@@ -65,6 +83,12 @@ def parse_time_text(raw: Optional[str]) -> Optional[str]:
     return t
 
 def parse_capabilities(xml_text: str) -> List[Dict]:
+    """
+    Parsea el XML de GetCapabilities y devuelve lista de capas con:
+    - id
+    - título
+    - time_text (dimensión temporal detectada)
+    """
     ns_wmts = '{http://www.opengis.net/wmts/1.0}'
     ns_ows = '{http://www.opengis.net/ows/1.1}'
     root = ET.fromstring(xml_text)
@@ -73,10 +97,12 @@ def parse_capabilities(xml_text: str) -> List[Dict]:
         id_el = layer.find(ns_ows + 'Identifier')
         title_el = layer.find(ns_ows + 'Title')
         time_text = None
+        # Buscar dimensión TIME
         for dim in layer.findall(ns_wmts + 'Dimension'):
             if dim.get('name') and dim.get('name').lower() == 'time':
                 time_text = parse_time_text(dim.text or '')
                 break
+        # Alternativamente, buscar en Extent
         if time_text is None:
             for ext in layer.findall(ns_ows + 'Extent'):
                 if ext.get('name') and ext.get('name').lower() == 'time':
@@ -90,6 +116,10 @@ def parse_capabilities(xml_text: str) -> List[Dict]:
     return layers
 
 def try_parse_date(token: Optional[str]) -> Optional[date]:
+    """
+    Intenta convertir una cadena a fecha con varios formatos comunes.
+    Retorna None si no es posible parsear.
+    """
     if not token:
         return None
     token = token.strip()
@@ -106,10 +136,12 @@ def try_parse_date(token: Optional[str]) -> Optional[date]:
 
 # -------------------- I/O helpers ------------------------
 def save_text(path: Path, text: str):
+    """Guarda un archivo de texto en UTF-8."""
     path.write_text(text, encoding="utf-8")
     logging.debug(f"Saved text to {path}")
 
 def save_csv(rows: List[Dict], path: Path):
+    """Guarda una lista de diccionarios en CSV."""
     with path.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=['id','title','time_text','last_date'])
         w.writeheader()
@@ -118,6 +150,7 @@ def save_csv(rows: List[Dict], path: Path):
     logging.info(f"CSV guardado: {path}")
 
 def save_meta(meta: Dict, path: Path):
+    """Guarda un diccionario en JSON con indentación."""
     with path.open("w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2, ensure_ascii=False)
     logging.info(f"Meta guardada: {path}")
@@ -125,10 +158,8 @@ def save_meta(meta: Dict, path: Path):
 # -------------------- GEOCODING helpers --------------------
 def geocode_place(place: str, timeout:int=10) -> Optional[List[float]]:
     """
-    Geocodifica 'place' usando Nominatim y devuelve bbox en formato
-    [minLon, minLat, maxLon, maxLat]. Retorna None si no encuentra resultado.
-    NOTA: User-Agent incluye 'anonymous' por defecto. Para uso intensivo, incluye
-    un email y respeta la política de Nominatim.
+    Geocodifica un lugar usando Nominatim (OpenStreetMap).
+    Retorna bbox [minLon, minLat, maxLon, maxLat] o None si falla.
     """
     headers = {"User-Agent": "gibs-downloader/1.0 (anonymous)"}
     params = {"q": place, "format": "json", "limit": 1, "addressdetails": 0, "polygon_geojson": 0}
@@ -150,6 +181,10 @@ def geocode_place(place: str, timeout:int=10) -> Optional[List[float]]:
         return None
 
 def expand_bbox_km(bbox: List[float], buffer_km: float) -> List[float]:
+    """
+    Expande una bbox en grados según un buffer en kilómetros.
+    Considera la latitud media para ajustar el factor de conversión.
+    """
     if not bbox or buffer_km is None or buffer_km <= 0:
         return bbox
     minlon, minlat, maxlon, maxlat = bbox
@@ -162,6 +197,10 @@ def expand_bbox_km(bbox: List[float], buffer_km: float) -> List[float]:
 
 # -------------------- DOWNLOAD FLOW ---------------------
 def fetch_getcap(session: requests.Session, out_dir: Path) -> str:
+    """
+    Descarga el documento GetCapabilities de GIBS.
+    Guarda copia en XML en disco y devuelve el texto.
+    """
     logging.info("Descargando GetCapabilities desde GIBS...")
     r = session.get(GIBS_GETCAP_URL, timeout=REQUEST_TIMEOUT)
     r.raise_for_status()
@@ -171,6 +210,10 @@ def fetch_getcap(session: requests.Session, out_dir: Path) -> str:
     return xml
 
 def collect_layers_with_dates(xml_text: str) -> List[Dict]:
+    """
+    Procesa las capas extraídas de GetCapabilities.
+    Devuelve una lista con id, título, dimensión temporal y última fecha parseada.
+    """
     layers = parse_capabilities(xml_text)
     rows = []
     for l in layers:
@@ -191,6 +234,9 @@ def collect_layers_with_dates(xml_text: str) -> List[Dict]:
     return rows
 
 def build_image_params(layer_id: str, bbox: List[float], width: int, height: int, time_param: str) -> Dict:
+    """
+    Construye parámetros para solicitar imagen a GIBS.
+    """
     return {
         "TIME": time_param,
         "extent": f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}",
@@ -206,6 +252,11 @@ def build_image_params(layer_id: str, bbox: List[float], width: int, height: int
 def attempt_image_download(session: requests.Session, out_dir: Path,
                            layer_id: str, time_param: str,
                            bbox: List[float], size: Tuple[int,int]) -> Optional[Path]:
+    """
+    Intenta descargar una imagen de GIBS con los parámetros dados.
+    Guarda tanto la imagen como un archivo JSON de metadatos.
+    Retorna la ruta de la imagen si se descarga exitosamente.
+    """
     width, height = size
     params = build_image_params(layer_id, bbox, width, height, time_param)
     try:
@@ -248,6 +299,14 @@ def attempt_image_download(session: requests.Session, out_dir: Path,
 
 # -------------------- MAIN ------------------------------
 def main(argv=None):
+    """
+    Flujo principal del programa:
+    - Procesa argumentos
+    - Prepara directorio de salida
+    - Pregunta lugares si no se pasa --places
+    - Descarga GetCapabilities y analiza capas
+    - Intenta descargar imágenes hasta obtener una válida
+    """
     parser = argparse.ArgumentParser(description="Descargar imágenes GIBS (Test_gibs junto al .py).")
     parser.add_argument("--max-layers", type=int, default=DEFAULT_MAX_LAYERS, help="Máx capas a probar")
     parser.add_argument("--sizes", type=str, default=",".join(f"{w}x{h}" for w,h in DEFAULT_SIZES),
@@ -259,7 +318,7 @@ def main(argv=None):
 
     setup_logging(args.verbose)
 
-    # directorio del script
+    # Directorio del script
     try:
         script_dir = Path(__file__).resolve().parent
     except NameError:
@@ -268,7 +327,7 @@ def main(argv=None):
     out_dir.mkdir(parents=True, exist_ok=True)
     logging.info(f"Carpeta de salida: {out_dir}")
 
-    # parse sizes
+    # Parsear tamaños
     sizes = []
     for token in args.sizes.split(","):
         token = token.strip()
@@ -291,7 +350,7 @@ def main(argv=None):
         except Exception:
             places_input = ""
 
-    # Preparar bboxes: si places dado, geocodificamos y usamos sus bboxes
+    # Preparar bboxes: geocodificar si hay lugares dados
     bboxes_to_try: List[List[float]] = []
     if places_input:
         places = [p.strip() for p in places_input.split(",") if p.strip()]
@@ -305,13 +364,14 @@ def main(argv=None):
     if not bboxes_to_try:
         bboxes_to_try = DEFAULT_BBOXES
 
-    # fetch getcap
+    # Descargar GetCapabilities
     try:
         xml = fetch_getcap(session, out_dir)
     except Exception as e:
         logging.error(f"No se pudo descargar GetCapabilities: {e}")
         return
 
+    # Procesar capas con fechas
     rows = collect_layers_with_dates(xml)
     if not rows:
         logging.warning("No se detectaron capas con dimensión TIME en GetCapabilities.")
@@ -321,6 +381,7 @@ def main(argv=None):
     save_csv(rows_sorted, out_dir / "gibs_layers_dates.csv")
     logging.info(f"Se detectaron {len(rows_sorted)} capas con TIME. Probando descargas... (máx {args.max_layers})")
 
+    # Intentar descargas
     tried = 0
     try:
         for rec in rows_sorted:
@@ -330,6 +391,7 @@ def main(argv=None):
             last_date = rec['last_date']
             logging.debug(f"Probando layer {layer_id} last_date={last_date}")
 
+            # Se prueban dos tiempos: "latest" y la última fecha detectada
             time_attempts = ["latest"]
             if last_date:
                 time_attempts.append(last_date)
