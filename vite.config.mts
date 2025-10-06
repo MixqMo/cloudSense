@@ -1,16 +1,22 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
 
-// Config mínima para arrancar; sin alias.
+// Config mínima + alias @ → src
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "src"),
+    },
+  },
   optimizeDeps: {
     include: [
-      '@radix-ui/react-slot',
-      '@radix-ui/react-tabs',
-      'class-variance-authority',
-      'clsx',
-      'tailwind-merge',
+      "@radix-ui/react-slot",
+      "@radix-ui/react-tabs",
+      "class-variance-authority",
+      "clsx",
+      "tailwind-merge",
     ],
   },
-})
+});

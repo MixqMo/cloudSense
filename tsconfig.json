@@ -1,12 +1,19 @@
 {
     "compilerOptions": {
-        "target": "ES2022",
+        "target": "ES2020",
+        "useDefineForClassFields": true,
+        "lib": ["ES2020", "DOM", "DOM.Iterable"],
         "module": "ESNext",
-        "moduleResolution": "Bundler",
+        "skipLibCheck": true,
+        "moduleResolution": "bundler",
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "noEmit": true,
         "jsx": "react-jsx",
-        "strict": true,
         "baseUrl": ".",
-        "paths": { "@/*": ["src/*"] },
-        "types": ["node"]         // ⬅️ importante para que reconozca 'path', __dirname, etc.
-    }
+        "paths": {
+        "@/*": ["src/*"],
+        }
+    },
+    "include": ["src", "src/vite-env.d.ts"]
 }
