@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
-# gibs_Fer_con_places.py
+# gibs_Fer_interactive.py
 """
-Descargador GIBS con selección por lugar/país.
-
-Uso:
-  python gibs_Fer_con_places.py --places "Guatemala,California" --buffer-km 10 --email tu@correo.com
-  python gibs_Fer_con_places.py --places "Guatemala" --sizes 800x600,1200x900
-  python gibs_Fer_con_places.py  # usa bboxes por defecto
+GIBS downloader (interactivo):
+ - Si no se pasa --places, pregunta en terminal por lugares (separados por coma).
+ - Guarda todo en Test_gibs al lado del .py.
+ - No requiere correo; usa 'anonymous' en User-Agent para Nominatim.
 """
-
 from pathlib import Path
 import argparse
 import logging
@@ -126,21 +123,15 @@ def save_meta(meta: Dict, path: Path):
     logging.info(f"Meta guardada: {path}")
 
 # -------------------- GEOCODING helpers --------------------
-def geocode_place(place: str, email: Optional[str]=None, timeout:int=10) -> Optional[List[float]]:
+def geocode_place(place: str, timeout:int=10) -> Optional[List[float]]:
     """
     Geocodifica 'place' usando Nominatim y devuelve bbox en formato
     [minLon, minLat, maxLon, maxLat]. Retorna None si no encuentra resultado.
+    NOTA: User-Agent incluye 'anonymous' por defecto. Para uso intensivo, incluye
+    un email y respeta la política de Nominatim.
     """
-    headers = {
-        "User-Agent": f"gibs-downloader/1.0 ({email or 'anonymous'})"
-    }
-    params = {
-        "q": place,
-        "format": "json",
-        "limit": 1,
-        "addressdetails": 0,
-        "polygon_geojson": 0,
-    }
+    headers = {"User-Agent": "gibs-downloader/1.0 (anonymous)"}
+    params = {"q": place, "format": "json", "limit": 1, "addressdetails": 0, "polygon_geojson": 0}
     try:
         r = session.get(NOMINATIM_URL, params=params, headers=headers, timeout=timeout)
         r.raise_for_status()
@@ -152,7 +143,6 @@ def geocode_place(place: str, email: Optional[str]=None, timeout:int=10) -> Opti
         if not bb or len(bb) < 4:
             logging.warning(f"Nominatim: bbox faltante para '{place}'")
             return None
-        # boundingbox: [south, north, west, east]
         south, north, west, east = map(float, bb[:4])
         return [west, south, east, north]
     except Exception as e:
@@ -236,7 +226,7 @@ def attempt_image_download(session: requests.Session, out_dir: Path,
             for chunk in r.iter_content(1024):
                 if chunk:
                     fd.write(chunk)
-        logging.info(f"Descargado: {path}")
+        logging.info(f"✅ Descargado: {path}")
         meta = {
             "layer": layer_id,
             "time": time_param,
@@ -262,9 +252,8 @@ def main(argv=None):
     parser.add_argument("--max-layers", type=int, default=DEFAULT_MAX_LAYERS, help="Máx capas a probar")
     parser.add_argument("--sizes", type=str, default=",".join(f"{w}x{h}" for w,h in DEFAULT_SIZES),
                         help="Lista tamaños WxH separada por comas, e.g. 800x600,1200x900")
-    parser.add_argument("--places", type=str, default="", help="Lista de lugares/países separados por comas (ej: 'Guatemala,California')")
+    parser.add_argument("--places", type=str, default="", help="(Opcional) lista de lugares/países separados por comas")
     parser.add_argument("--buffer-km", type=float, default=0.0, help="Buffer en km para expandir bbox geocodificada")
-    parser.add_argument("--email", type=str, default="", help="Email para User-Agent en Nominatim (recomendado)")
     parser.add_argument("--verbose", action="store_true", help="Verbose logging")
     args = parser.parse_args(argv)
 
@@ -294,19 +283,25 @@ def main(argv=None):
         except ValueError:
             logging.warning(f"Ignorando tamaño no numérico: {token}")
 
-    # Preparar bboxes: si --places dado, geocodificamos y usamos sus bboxes
+    # Si no se pasó --places, preguntar en terminal
+    places_input = args.places.strip() if args.places else ""
+    if not places_input:
+        try:
+            places_input = input("Ingrese lugares o países separados por comas (Enter = usar valores por defecto): ").strip()
+        except Exception:
+            places_input = ""
+
+    # Preparar bboxes: si places dado, geocodificamos y usamos sus bboxes
     bboxes_to_try: List[List[float]] = []
-    if args.places:
-        # separar por comas respetando comillas no implementado (simple split)
-        places = [p.strip() for p in args.places.split(",") if p.strip()]
+    if places_input:
+        places = [p.strip() for p in places_input.split(",") if p.strip()]
         for place in places:
-            bbox = geocode_place(place, email=args.email or None)
+            bbox = geocode_place(place)
             if bbox:
                 bbox = expand_bbox_km(bbox, args.buffer_km)
                 bboxes_to_try.append(bbox)
             else:
                 logging.warning(f"No se obtuvo bbox para '{place}', se omitirá.")
-    # si no hay lugares válidos, usar DEFAULT_BBOXES
     if not bboxes_to_try:
         bboxes_to_try = DEFAULT_BBOXES
 
