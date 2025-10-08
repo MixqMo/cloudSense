@@ -1,13 +1,24 @@
+// vite.config.mts
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
-// Config mínima + alias @ → src
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
+    },
+  },
+  server: {
+    proxy: {
+      // /openaq -> https://api.openaq.org/v3/...
+      "/openaq": {
+        target: "https://api.openaq.org",
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p) => p.replace(/^\/openaq/, "/v3"),
+      },
     },
   },
   optimizeDeps: {
