@@ -24,8 +24,8 @@ import math
 GIBS_GETCAP_URL = "https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/wmts.cgi?request=GetCapabilities"
 IMAGE_DOWNLOAD_BASE = "https://gibs.earthdata.nasa.gov/image-download"
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-REQUEST_TIMEOUT = 20
-DEFAULT_MAX_LAYERS = 200  # Número máximo de capas a probar
+REQUEST_TIMEOUT = 5
+DEFAULT_MAX_LAYERS = 5  # Número máximo de capas a probar
 DEFAULT_BBOXES = [
     [-125, 24, -66, 49],   # EEUU continental
     [-125, 32, -114, 42],  # California aprox
